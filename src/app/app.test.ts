@@ -1,11 +1,26 @@
-import { render, screen, userEvent } from '@ng-native/testing';
 import { expect, test } from 'vitest';
+import { render, screen, userEvent } from '@ng-native/testing';
+import { TrackerStore } from './core/state.ts';
 import { App } from './app.ts';
 
-test('counts taps', async () => {
+test('opens on the Ramadan tab and switches tabs', async () => {
   await render(App);
 
-  await userEvent.setup().press(screen.getByRole('button', { name: 'Tapped 0 times' }));
+  expect(screen.getByText('Трекер Рамадана')).toBeTruthy();
 
-  expect(screen.getByText('Tapped 1 times')).toBeTruthy();
+  await userEvent.setup().press(screen.getByRole('button', { name: 'Азкары' }));
+  expect(screen.getAllByText('Утренние').length).toBeGreaterThan(0);
+
+  await userEvent.setup().press(screen.getByRole('button', { name: 'Коран' }));
+  expect(screen.getByText('Сегодняшнее чтение')).toBeTruthy();
+});
+
+test('switches the whole UI language', async () => {
+  const { componentRef } = await render(App);
+
+  await userEvent.setup().press(screen.getByRole('button', { name: 'Настройки' }));
+  await userEvent.setup().press(screen.getByRole('button', { name: 'EN' }));
+
+  expect(componentRef.injector.get(TrackerStore).settings().language).toBe('en');
+  expect(screen.getByText('Notifications')).toBeTruthy();
 });
