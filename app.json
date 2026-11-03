@@ -9,7 +9,7 @@
     ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ramadantracker.app"
@@ -30,12 +30,14 @@
         "root": "src/app"
       },
       "eas": {
-        "projectId": "de310bf3-bc72-4013-af30-dba0a291cc3d"
+        "projectId": "818fa0f4-ff96-40fc-85bb-ace250abe32c"
       }
     },
     "plugins": [
-      "@ng-native/metro/app.plugin.cjs"
+      "@ng-native/metro/app.plugin.cjs",
+      "expo-status-bar",
+      "expo-sharing"
     ],
-    "owner": "husaynable"
+    "owner": "husaynables-team"
   }
 }

@@ -6,18 +6,16 @@ import { TrackerStore } from './state';
 
 const CHANNEL_ID = 'ramadan-tracker';
 
-/**
- * Local reminders, the app's replacement for the bot's scheduled Telegram messages. One daily
- * notification per feature, at the hour the user chose, cancelled and rebuilt whenever a setting
- * changes so there is never a stale schedule behind a new one.
- */
+type ReminderCategory = 'tracker' | 'quran' | 'taraweeh' | 'azkar' | 'mulk';
+
+/** Repeating local notifications. Native repeats survive a reboot; rebuilds are serialised. */
 @Injectable({ providedIn: 'root' })
 export class Reminders {
   private readonly notifications = inject(Notifications);
   private readonly store = inject(TrackerStore);
   private readonly i18n = inject(I18n);
+  private queue: Promise<void> = Promise.resolve();
 
-  /** Installs the foreground handler and Android channel. Safe to call more than once. */
   configure(): void {
     this.notifications.setHandler({
       handleNotification: async () => ({
@@ -27,10 +25,6 @@ export class Reminders {
         shouldSetBadge: false,
       }),
     });
-
-    // A channel is Android-only, and `setChannel` already resolves to null on iOS, so this runs
-    // unconditionally rather than reaching for `Platform` (whose module pulls React Native's Flow
-    // source into the test runner).
     void this.notifications.setChannel(CHANNEL_ID, {
       name: this.i18n.t('notif.channel'),
       importance: 4 as AndroidImportance,
@@ -39,7 +33,6 @@ export class Reminders {
 
   async enable(): Promise<boolean> {
     const granted = await this.notifications.permission.ensure();
-    // Changing the setting is enough: the app's effect on the settings reschedules from it.
     this.store.patchSettings({ notificationsEnabled: granted });
     return granted;
   }
@@ -48,41 +41,92 @@ export class Reminders {
     this.store.patchSettings({ notificationsEnabled: false });
   }
 
-  async reschedule(): Promise<void> {
-    await this.notifications.cancelAll();
+  /** A settings burst cannot leave overlapping cancel/schedule operations behind. */
+  reschedule(): Promise<void> {
+    const run = this.queue.then(() => this.rebuild(), () => this.rebuild());
+    this.queue = run;
+    return run;
+  }
 
+  private async rebuild(): Promise<void> {
+    await this.notifications.cancelAll();
     const settings = this.store.settings();
     if (!settings.notificationsEnabled) return;
 
-    await this.scheduleDaily(
-      settings.morningAzkarHour,
-      'notif.morningAzkar.title',
-      'notif.morningAzkar.body',
-    );
-    await this.scheduleDaily(
-      settings.eveningAzkarHour,
-      'notif.eveningAzkar.title',
-      'notif.eveningAzkar.body',
-    );
-    await this.scheduleDaily(
-      settings.quranReminderHour,
-      'notif.quran.title',
-      'notif.quran.body',
-    );
+    const day = this.store.currentDay();
+    if (settings.trackerReminderEnabled) {
+      await this.scheduleDaily(
+        settings.trackerReminderHour,
+        'notif.tracker.title',
+        'notif.tracker.body',
+        'tracker',
+        'ramadan-daily-reflection',
+        day,
+      );
+    }
+    if (settings.azkarRemindersEnabled) {
+      await this.scheduleDaily(
+        settings.morningAzkarHour,
+        'notif.morningAzkar.title',
+        'notif.morningAzkar.body',
+        'azkar',
+        'morning-azkar',
+        day,
+      );
+      await this.scheduleDaily(
+        settings.eveningAzkarHour,
+        'notif.eveningAzkar.title',
+        'notif.eveningAzkar.body',
+        'azkar',
+        'evening-azkar',
+        day,
+      );
+    }
+    if (settings.quranReminderEnabled) {
+      await this.scheduleDaily(
+        settings.quranReminderHour,
+        'notif.quran.title',
+        'notif.quran.body',
+        'quran',
+        'quran-tracker',
+        day,
+      );
+    }
+    if (settings.taraweehReminderEnabled) {
+      await this.scheduleDaily(
+        settings.taraweehReminderHour,
+        'notif.taraweeh.title',
+        'notif.taraweeh.body',
+        'taraweeh',
+        'taraweeh-tracker',
+        day,
+      );
+    }
     if (settings.mulkEnabled) {
       await this.scheduleDaily(
         settings.mulkReminderHour,
         'notif.mulk.title',
         'notif.mulk.body',
+        'mulk',
+        'surah-al-mulk',
+        day,
       );
     }
   }
 
-  private scheduleDaily(hour: number, titleKey: string, bodyKey: string): Promise<string | null> {
+  private scheduleDaily(
+    hour: number,
+    titleKey: string,
+    bodyKey: string,
+    category: ReminderCategory,
+    source: string,
+    day: number | null,
+  ): Promise<string | null> {
     return this.notifications.schedule({
       content: {
         title: this.i18n.t(titleKey),
         body: this.i18n.t(bodyKey),
+        data: { category, source, day },
       },
       trigger: {
         type: TriggerType.DAILY,

@@ -1,9 +1,10 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { Storage } from '@ng-native/expo/async-storage';
-import { dayOfRamadan, lastNDates, RAMADAN_DAYS } from './dates';
+import { addDays, dayOfRamadan, lastNDates } from './dates';
 
 export type Language = 'ru' | 'en';
-/** 0 = missed, 1 = at home, 2 = at the mosque - the bot's own encoding, kept so a future backend matches. */
+export type RamadanLength = 29 | 30;
+/** 0 = missed, 1 = at home, 2 = at the mosque - the bot's own encoding. */
 export type TaraweehStatus = 0 | 1 | 2;
 
 export interface DayRecord {
@@ -19,16 +20,26 @@ export interface AzkarDay {
 
 export interface QuranDay {
   read?: boolean;
+  /** Pages and juz are alternatives: saving one clears the other. */
   pages?: number;
+  juz?: number;
 }
 
 export interface AppSettings {
   language: Language;
-  /** `YYYY-MM-DD`, or null until the user sets it. */
+  onboardingCompleted: boolean;
+  /** Local `YYYY-MM-DD`; never a fixed, server-wide Ramadan date. */
   ramadanStart: string | null;
+  ramadanLength: RamadanLength;
   morningAzkarHour: number;
   eveningAzkarHour: number;
+  azkarRemindersEnabled: boolean;
+  trackerReminderEnabled: boolean;
+  trackerReminderHour: number;
+  quranReminderEnabled: boolean;
   quranReminderHour: number;
+  taraweehReminderEnabled: boolean;
+  taraweehReminderHour: number;
   mulkEnabled: boolean;
   mulkReminderHour: number;
   notificationsEnabled: boolean;
@@ -36,9 +47,9 @@ export interface AppSettings {
 
 export interface AppState {
   settings: AppSettings;
-  /** Keyed by the day of Ramadan (1…30). */
+  /** Keyed by the day of Ramadan (1…30), one record per day. */
   ramadan: Record<number, DayRecord>;
-  /** Keyed by `YYYY-MM-DD`. */
+  /** Keyed by local `YYYY-MM-DD`. */
   azkar: Record<string, AzkarDay>;
   quran: Record<string, QuranDay>;
   mulk: Record<string, boolean>;
@@ -46,10 +57,18 @@ export interface AppState {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   language: 'ru',
+  onboardingCompleted: false,
   ramadanStart: null,
+  ramadanLength: 30,
   morningAzkarHour: 5,
   eveningAzkarHour: 17,
+  azkarRemindersEnabled: true,
+  trackerReminderEnabled: true,
+  trackerReminderHour: 20,
+  quranReminderEnabled: true,
   quranReminderHour: 21,
+  taraweehReminderEnabled: false,
+  taraweehReminderHour: 22,
   mulkEnabled: false,
   mulkReminderHour: 22,
   notificationsEnabled: false,
@@ -66,33 +85,34 @@ export const DEFAULT_STATE: AppState = {
 export interface RamadanStats {
   fasting: number;
   notFasting: number;
+  fastingUnmarked: number;
   quran: number;
   notQuran: number;
+  quranUnmarked: number;
   taraweehTotal: number;
   taraweehMosque: number;
   taraweehHome: number;
+  taraweehMissed: number;
+  taraweehUnmarked: number;
 }
 
-/**
- * Every tracker and setting, persisted under one key through the injected `Storage` token.
- *
- * `Storage` is an `InjectionToken<Store>`, not a concrete AsyncStorage call, so the persistence
- * seam is already here: a device build binds it to the key-value file, a test leaves it empty, and
- * a Supabase-backed `Store` could be provided in its place without touching this class.
- */
+/** Every tracker and setting, persisted through the injectable Storage seam. */
 @Injectable({ providedIn: 'root' })
 export class TrackerStore {
   private readonly storage = inject(Storage);
 
   readonly state = this.storage.signal<AppState>('ramadan-tracker/state/v1', DEFAULT_STATE);
-  readonly settings = computed<AppSettings>(() => this.state().settings);
+  /** The merge also migrates settings saved by an older version of the app. */
+  readonly settings = computed<AppSettings>(() => ({
+    ...DEFAULT_SETTINGS,
+    ...this.state().settings,
+  }));
 
-  /** The day of Ramadan today, or null while the start date is unset or out of range. */
   readonly currentDay = computed<number | null>(() => {
-    const start = this.settings().ramadanStart;
-    if (!start) return null;
-    const day = dayOfRamadan(start);
-    return day >= 1 && day <= RAMADAN_DAYS ? day : null;
+    const settings = this.settings();
+    if (!settings.ramadanStart) return null;
+    const day = dayOfRamadan(settings.ramadanStart);
+    return day >= 1 && day <= settings.ramadanLength ? day : null;
   });
 
   setLanguage(language: Language): void {
@@ -111,10 +131,29 @@ export class TrackerStore {
   }
 
   updateDay(day: number, patch: Partial<DayRecord>): void {
-    this.state.update((state) => ({
-      ...state,
-      ramadan: { ...state.ramadan, [day]: { ...state.ramadan[day], ...patch } },
-    }));
+    this.state.update((state) => {
+      const next: AppState = {
+        ...state,
+        ramadan: { ...state.ramadan, [day]: { ...state.ramadan[day], ...patch } },
+      };
+      if (!Object.prototype.hasOwnProperty.call(patch, 'quran')) return next;
+
+      const start = this.settings().ramadanStart;
+      if (!start) return next;
+      const date = addDays(start, day - 1);
+      const read = patch.quran;
+      return {
+        ...next,
+        quran: {
+          ...next.quran,
+          [date]: {
+            ...next.quran[date],
+            read,
+            ...(read === true ? {} : { pages: undefined, juz: undefined }),
+          },
+        },
+      };
+    });
   }
 
   updateAzkar(date: string, patch: Partial<AzkarDay>): void {
@@ -125,10 +164,25 @@ export class TrackerStore {
   }
 
   updateQuran(date: string, patch: Partial<QuranDay>): void {
-    this.state.update((state) => ({
-      ...state,
-      quran: { ...state.quran, [date]: { ...state.quran[date], ...patch } },
-    }));
+    this.state.update((state) => {
+      const next: AppState = {
+        ...state,
+        quran: { ...state.quran, [date]: { ...state.quran[date], ...patch } },
+      };
+      if (!Object.prototype.hasOwnProperty.call(patch, 'read')) return next;
+
+      const start = this.settings().ramadanStart;
+      if (!start) return next;
+      const day = dayOfRamadan(start, date);
+      if (day < 1 || day > this.settings().ramadanLength) return next;
+      return {
+        ...next,
+        ramadan: {
+          ...next.ramadan,
+          [day]: { ...next.ramadan[day], quran: patch.read },
+        },
+      };
+    });
   }
 
   updateMulk(date: string, read: boolean): void {
@@ -139,22 +193,34 @@ export class TrackerStore {
     const stats: RamadanStats = {
       fasting: 0,
       notFasting: 0,
+      fastingUnmarked: 0,
       quran: 0,
       notQuran: 0,
+      quranUnmarked: 0,
       taraweehTotal: 0,
       taraweehMosque: 0,
       taraweehHome: 0,
+      taraweehMissed: 0,
+      taraweehUnmarked: 0,
     };
-    for (const record of Object.values(this.state().ramadan)) {
+    for (let day = 1; day <= this.settings().ramadanLength; day++) {
+      const record = this.state().ramadan[day] ?? {};
       if (record.fasting === true) stats.fasting++;
-      if (record.fasting === false) stats.notFasting++;
+      else if (record.fasting === false) stats.notFasting++;
+      else stats.fastingUnmarked++;
+
       if (record.quran === true) stats.quran++;
-      if (record.quran === false) stats.notQuran++;
-      if (record.taraweeh !== undefined) {
+      else if (record.quran === false) stats.notQuran++;
+      else stats.quranUnmarked++;
+
+      if (record.taraweeh === 2) {
         stats.taraweehTotal++;
-        if (record.taraweeh === 2) stats.taraweehMosque++;
-        if (record.taraweeh === 1) stats.taraweehHome++;
-      }
+        stats.taraweehMosque++;
+      } else if (record.taraweeh === 1) {
+        stats.taraweehTotal++;
+        stats.taraweehHome++;
+      } else if (record.taraweeh === 0) stats.taraweehMissed++;
+      else stats.taraweehUnmarked++;
     }
     return stats;
   });
@@ -174,12 +240,14 @@ export class TrackerStore {
     const quran = this.state().quran;
     let daysRead = 0;
     let pages = 0;
+    let juz = 0;
     for (const date of lastNDates(7)) {
       const day = quran[date];
       if (day?.read) daysRead++;
       if (day?.pages) pages += day.pages;
+      if (day?.juz) juz += day.juz;
     }
-    return { daysRead, pages, total: 7 };
+    return { daysRead, pages, juz, total: 7 };
   });
 
   readonly mulkWeek = computed(() => {

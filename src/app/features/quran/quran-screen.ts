@@ -8,51 +8,93 @@ import { TrackerStore } from '../../core/state.ts';
   selector: 'app-quran',
   imports: [Pressable, ScrollView, Text, TextInput, View],
   host: { style: 'flex: 1' },
+  styleUrl: '../../shared/theme.css',
   template: `
-    <scroll-view class="screen" [contentContainerStyle]="{ padding: 16, gap: 16 }">
-      <text class="title">{{ i18n.t('quran.title') }}</text>
+    <scroll-view class="screen" [contentContainerStyle]="{ padding: 18, gap: 16, paddingBottom: 28 }">
+      <view class="brand">
+        <text class="title">{{ i18n.t('quran.title') }}</text>
+        <text class="meta">{{ i18n.t('quran.today') }}</text>
+      </view>
 
       <view class="card">
-        <text class="section-title">{{ i18n.t('quran.today') }}</text>
-        @if (quranToday().read) {
-          <text class="status ok">{{ i18n.t('quran.readDone') }}</text>
+        <view class="card-head">
+          <text class="section-title">{{ i18n.t('quran.today') }}</text>
+          @if (quranToday().read !== undefined) {
+            <pressable accessibilityRole="button" (press)="clearMark()">
+              <text class="clear-text">{{ i18n.t('quran.clear') }}</text>
+            </pressable>
+          }
+        </view>
+        @if (quranToday().read === true) {
+          <text class="status ok">✓ {{ i18n.t('quran.readDone') }}</text>
         } @else if (quranToday().read === false) {
           <text class="status off">{{ i18n.t('quran.readUndone') }}</text>
         }
         @if (quranToday().pages) {
-          <text class="meta"
-            >{{ quranToday().pages }} {{ i18n.count(quranToday().pages ?? 0, 'unit.page') }}</text
-          >
+          <text class="amount">{{ quranToday().pages }} {{ i18n.count(quranToday().pages ?? 0, 'unit.page') }}</text>
+        } @else if (quranToday().juz) {
+          <text class="amount">{{ quranToday().juz }} {{ i18n.count(quranToday().juz ?? 0, 'unit.juz') }}</text>
         }
-        @if (!showPages()) {
-          <view class="row">
-            <pressable class="option" accessibilityRole="button" (press)="markRead()">
-              <text class="option-text">{{ i18n.t('quran.markRead') }}</text>
-            </pressable>
-            <pressable class="option" accessibilityRole="button" (press)="togglePages()">
-              <text class="option-text">{{ i18n.t('quran.enterPages') }}</text>
-            </pressable>
-          </view>
-          <pressable class="link" accessibilityRole="button" (press)="markUnread()">
-            <text class="link-text">{{ i18n.t('quran.readUndone') }}</text>
+
+        <view class="row">
+          <pressable
+            class="option"
+            accessibilityRole="button"
+            [style]="optionStyle(quranToday().read === true)"
+            (press)="markRead()"
+          >
+            <text class="option-text" [style]="optionTextStyle(quranToday().read === true)">{{
+              i18n.t('quran.markRead')
+            }}</text>
+          </pressable>
+          <pressable
+            class="option"
+            accessibilityRole="button"
+            [style]="optionStyle(quranToday().read === false)"
+            (press)="markUnread()"
+          >
+            <text class="option-text" [style]="optionTextStyle(quranToday().read === false)">{{
+              i18n.t('quran.markUnread')
+            }}</text>
+          </pressable>
+        </view>
+
+        @if (!showAmount()) {
+          <pressable class="secondary" accessibilityRole="button" (press)="toggleAmount()">
+            <text class="secondary-text">{{ i18n.t('quran.enterPages') }}</text>
           </pressable>
         } @else {
-          <text class="field-label">{{ i18n.t('quran.pagesLabel') }}</text>
+          <view class="divider"></view>
+          <text class="meta">{{ i18n.t('quran.pagesLabel') }}</text>
+          <view class="row">
+            @for (item of amountUnits; track item) {
+              <pressable
+                class="option"
+                accessibilityRole="button"
+                [style]="optionStyle(amountUnit() === item)"
+                (press)="amountUnit.set(item)"
+              >
+                <text class="option-text" [style]="optionTextStyle(amountUnit() === item)">{{
+                  i18n.t(item === 'pages' ? 'quran.pages' : 'quran.juz')
+                }}</text>
+              </pressable>
+            }
+          </view>
           <text-input
             class="input"
-            [value]="pagesInput()"
-            placeholder="30"
-            placeholderTextColor="#9aa8a0"
-            keyboardType="number-pad"
+            [value]="amountInput()"
+            [placeholder]="i18n.t('quran.amountPlaceholder')"
+            placeholderTextColor="#75847b"
+            keyboardType="decimal-pad"
             [returnKeyType]="'done'"
-            (changeText)="pagesInput.set($event)"
+            (changeText)="amountInput.set($event)"
           />
           <view class="row">
-            <pressable class="primary" accessibilityRole="button" (press)="savePages()">
+            <pressable class="primary save" accessibilityRole="button" (press)="saveAmount()">
               <text class="primary-text">{{ i18n.t('quran.save') }}</text>
             </pressable>
-            <pressable class="ghost" accessibilityRole="button" (press)="togglePages()">
-              <text class="ghost-text">{{ i18n.t('common.cancel') }}</text>
+            <pressable class="secondary save" accessibilityRole="button" (press)="toggleAmount()">
+              <text class="secondary-text">{{ i18n.t('common.cancel') }}</text>
             </pressable>
           </view>
         }
@@ -62,222 +104,63 @@ import { TrackerStore } from '../../core/state.ts';
         <text class="section-title">{{ i18n.t('quran.statsTitle') }}</text>
         <view class="stat-row">
           <text class="stat-label">{{ i18n.t('quran.stat.daysRead') }}</text>
-          <text class="stat-value"
-            >{{ quranWeek().daysRead }} {{ i18n.count(quranWeek().daysRead, 'unit.day') }}</text
-          >
+          <text class="stat-value">{{ quranWeek().daysRead }} {{ i18n.count(quranWeek().daysRead, 'unit.day') }}</text>
         </view>
         <view class="stat-row">
           <text class="stat-label">{{ i18n.t('quran.stat.pagesRead') }}</text>
-          <text class="stat-value"
-            >{{ quranWeek().pages }} {{ i18n.count(quranWeek().pages, 'unit.page') }}</text
-          >
+          <text class="stat-value">{{ quranWeek().pages }} {{ i18n.count(quranWeek().pages, 'unit.page') }}</text>
+        </view>
+        <view class="stat-row">
+          <text class="stat-label">{{ i18n.t('quran.stat.juzRead') }}</text>
+          <text class="stat-value">{{ quranWeek().juz }} {{ i18n.count(quranWeek().juz, 'unit.juz') }}</text>
         </view>
       </view>
 
       <view class="card">
         <view class="card-head">
           <text class="section-title">{{ i18n.t('mulk.title') }}</text>
-          <pressable class="toggle" accessibilityRole="button" (press)="toggleMulk()">
-            <text class="toggle-text">{{
-              mulkEnabled() ? i18n.t('mulk.toggleOff') : i18n.t('mulk.toggleOn')
+          <pressable class="secondary" accessibilityRole="button" (press)="toggleMulk()">
+            <text class="secondary-text">{{
+              mulkEnabled() ? i18n.t('settings.enabled') : i18n.t('settings.disabled')
             }}</text>
           </pressable>
         </view>
-        <text class="meta">{{
-          mulkEnabled() ? i18n.t('mulk.enabledHint') : i18n.t('mulk.disabledHint')
-        }}</text>
-
-        @if (mulkToday()) {
-          <text class="status ok">{{ i18n.t('mulk.readDone') }}</text>
-        } @else {
-          <text class="status off">{{ i18n.t('mulk.readUndone') }}</text>
+        <text class="meta">{{ mulkEnabled() ? i18n.t('mulk.enabledHint') : i18n.t('mulk.disabledHint') }}</text>
+        @if (mulkEnabled()) {
+          @if (mulkToday()) {
+            <text class="status ok">✓ {{ i18n.t('mulk.readDone') }}</text>
+          }
+          <view class="row">
+            <pressable class="option" accessibilityRole="button" (press)="markMulk(true)">
+              <text class="option-text">{{ i18n.t('mulk.markRead') }}</text>
+            </pressable>
+            <pressable class="option" accessibilityRole="button" (press)="markMulk(false)">
+              <text class="option-text">{{ i18n.t('mulk.markUnread') }}</text>
+            </pressable>
+          </view>
+          <view class="stat-row">
+            <text class="stat-label">{{ i18n.t('mulk.statsTitle') }}</text>
+            <text class="stat-value">{{ mulkWeek().daysRead }} {{ i18n.count(mulkWeek().daysRead, 'unit.day') }}</text>
+          </view>
         }
-        <view class="row">
-          <pressable class="option" accessibilityRole="button" (press)="markMulk(true)">
-            <text class="option-text">{{ i18n.t('mulk.markRead') }}</text>
-          </pressable>
-          <pressable class="option" accessibilityRole="button" (press)="markMulk(false)">
-            <text class="option-text">{{ i18n.t('mulk.markUnread') }}</text>
-          </pressable>
-        </view>
-
-        <view class="stat-row">
-          <text class="stat-label">{{ i18n.t('mulk.statsTitle') }}</text>
-          <text class="stat-value"
-            >{{ mulkWeek().daysRead }} {{ i18n.count(mulkWeek().daysRead, 'unit.day') }}</text
-          >
-        </view>
-
         <text class="virtue">{{ i18n.t('mulk.virtue') }}</text>
       </view>
     </scroll-view>
   `,
   styles: `
-    .screen {
-      flex: 1;
-      background-color: #f4f7f5;
-    }
-    .title {
-      font-size: 26px;
-      font-weight: 700;
-      color: #101a14;
-    }
-    .card {
-      background-color: #ffffff;
-      border-radius: 16px;
-      padding: 16px;
-      gap: 10px;
-      border-width: 1px;
-      border-color: #e6ece8;
-    }
-    .card-head {
-      flex-direction: row;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .section-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: #101a14;
-    }
-    .status {
-      font-size: 15px;
-      font-weight: 600;
-    }
-    .status.ok {
-      color: #1f8a5b;
-    }
-    .status.off {
-      color: #b3564d;
-    }
-    .meta {
-      font-size: 13px;
-      color: #6b7a71;
-    }
-    .field-label {
-      font-size: 13px;
-      font-weight: 600;
-      color: #6b7a71;
-    }
-    .row {
-      flex-direction: row;
-      gap: 8px;
-    }
-    .option {
-      flex: 1;
-      align-items: center;
-      padding: 12px;
-      border-radius: 12px;
-      background-color: #eef2ef;
-    }
-    .option-text {
-      font-size: 14px;
-      color: #24312b;
-    }
-    .link {
-      padding-top: 2px;
-    }
-    .link-text {
-      font-size: 13px;
-      color: #b3564d;
-    }
-    .input {
-      background-color: #f1f5f2;
-      border-radius: 12px;
-      padding: 12px;
-      font-size: 16px;
-      color: #101a14;
-    }
-    .primary {
-      flex: 1;
-      align-items: center;
-      padding: 12px;
-      border-radius: 12px;
-      background-color: #1f8a5b;
-    }
-    .primary-text {
-      color: #ffffff;
-      font-size: 15px;
-      font-weight: 600;
-    }
-    .ghost {
-      flex: 1;
-      align-items: center;
-      padding: 12px;
-      border-radius: 12px;
-      background-color: #eef2ef;
-    }
-    .ghost-text {
-      color: #24312b;
-      font-size: 15px;
-    }
-    .toggle {
-      padding: 8px 12px;
-      border-radius: 10px;
-      background-color: #eef2ef;
-    }
-    .toggle-text {
-      font-size: 13px;
-      color: #24312b;
-    }
-    .stat-row {
-      flex-direction: row;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .stat-label {
-      font-size: 14px;
-      color: #4a5a51;
-    }
-    .stat-value {
-      font-size: 14px;
-      font-weight: 600;
-      color: #101a14;
-    }
+    .clear-text { color: #d5b576; font-size: 12px; padding: 6px 0 6px 8px; }
+    .status { font-size: 14px; font-weight: 600; }
+    .status.ok { color: #91c7a7; }
+    .status.off { color: #ef9d8e; }
+    .amount { color: #e3d3ae; font-family: serif; font-size: 22px; }
+    .save { flex: 1; }
     .virtue {
-      font-size: 13px;
-      color: #5c4a26;
-      line-height: 1.5;
-      background-color: #fdf7ec;
+      color: #d7c9aa;
+      background-color: #1b261e;
       border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.5;
       padding: 12px;
-    }
-    @media (prefers-color-scheme: dark) {
-      .screen {
-        background-color: #0e1512;
-      }
-      .title,
-      .section-title,
-      .stat-value {
-        color: #eaf2ec;
-      }
-      .meta,
-      .field-label,
-      .stat-label {
-        color: #93a49a;
-      }
-      .card {
-        background-color: #17211c;
-        border-color: #22302a;
-      }
-      .option,
-      .ghost,
-      .toggle {
-        background-color: #1e2a24;
-      }
-      .option-text,
-      .ghost-text,
-      .toggle-text {
-        color: #d6e2da;
-      }
-      .input {
-        background-color: #1e2a24;
-        color: #eaf2ec;
-      }
-      .virtue {
-        background-color: #241f14;
-        color: #e0cfa6;
-      }
     }
   `,
 })
@@ -286,8 +169,10 @@ export class QuranScreen {
   protected readonly i18n = inject(I18n);
 
   protected readonly today = localTodayIso();
-  protected readonly pagesInput = signal('');
-  protected readonly showPages = signal(false);
+  protected readonly amountInput = signal('');
+  protected readonly amountUnit = signal<'pages' | 'juz'>('pages');
+  protected readonly amountUnits = ['pages', 'juz'] as const;
+  protected readonly showAmount = signal(false);
 
   protected readonly quranToday = computed(() => this.store.state().quran[this.today] ?? {});
   protected readonly quranWeek = computed(() => this.store.quranWeek());
@@ -300,20 +185,32 @@ export class QuranScreen {
   }
 
   protected markUnread(): void {
-    this.store.updateQuran(this.today, { read: false, pages: undefined });
+    this.store.updateQuran(this.today, { read: false, pages: undefined, juz: undefined });
   }
 
-  protected togglePages(): void {
-    this.showPages.update((shown) => !shown);
+  protected clearMark(): void {
+    this.store.updateQuran(this.today, { read: undefined, pages: undefined, juz: undefined });
   }
 
-  protected savePages(): void {
-    const pages = parseInt(this.pagesInput().trim(), 10);
-    if (!Number.isNaN(pages) && pages > 0) {
-      this.store.updateQuran(this.today, { read: true, pages });
+  protected toggleAmount(): void {
+    this.showAmount.update((shown) => !shown);
+  }
+
+  protected saveAmount(): void {
+    const value = Number(this.amountInput().trim().replace(',', '.'));
+    if (Number.isFinite(value) && value > 0) {
+      if (this.amountUnit() === 'pages') {
+        this.store.updateQuran(this.today, {
+          read: true,
+          pages: Math.max(1, Math.floor(value)),
+          juz: undefined,
+        });
+      } else {
+        this.store.updateQuran(this.today, { read: true, juz: value, pages: undefined });
+      }
+      this.amountInput.set('');
+      this.showAmount.set(false);
     }
-    this.pagesInput.set('');
-    this.showPages.set(false);
   }
 
   protected markMulk(read: boolean): void {
@@ -322,5 +219,13 @@ export class QuranScreen {
 
   protected toggleMulk(): void {
     this.store.patchSettings({ mulkEnabled: !this.mulkEnabled() });
+  }
+
+  protected optionStyle(active: boolean) {
+    return active ? { backgroundColor: '#d5b576', borderColor: '#d5b576' } : {};
+  }
+
+  protected optionTextStyle(active: boolean) {
+    return active ? { color: '#142019', fontWeight: '700' } : {};
   }
 }

@@ -9,76 +9,32 @@ import { Pressable, Text, View } from '@ng-native/components';
     <view class="field">
       <text class="label">{{ label() }}</text>
       <view class="stepper">
-        <pressable
-          class="step"
-          accessibilityRole="button"
-          [accessibilityLabel]="label() + ' −'"
-          (press)="dec()"
-        >
+        <pressable class="step" accessibilityRole="button" [accessibilityLabel]="label() + ' −'" (press)="dec()">
           <text class="step-text">−</text>
         </pressable>
         <text class="value">{{ hour() }}:00</text>
-        <pressable
-          class="step"
-          accessibilityRole="button"
-          [accessibilityLabel]="label() + ' +'"
-          (press)="inc()"
-        >
+        <pressable class="step" accessibilityRole="button" [accessibilityLabel]="label() + ' +'" (press)="inc()">
           <text class="step-text">+</text>
         </pressable>
       </view>
     </view>
   `,
   styles: `
-    .field {
-      flex-direction: row;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .label {
-      font-size: 14px;
-      color: #4a5a51;
-      flex: 1;
-    }
-    .stepper {
-      flex-direction: row;
-      align-items: center;
-      gap: 10px;
-    }
+    .field { min-height: 48px; flex-direction: row; justify-content: space-between; align-items: center; gap: 8px; }
+    .label { font-size: 14px; color: #b5beb6; flex: 1; }
+    .stepper { flex-direction: row; align-items: center; gap: 8px; }
     .step {
-      width: 34px;
-      height: 34px;
-      border-radius: 17px;
+      width: 36px;
+      height: 36px;
+      border-radius: 18px;
       align-items: center;
       justify-content: center;
-      background-color: #eef2ef;
+      background-color: #1a2a25;
+      border-color: #314038;
+      border-width: 1px;
     }
-    .step-text {
-      font-size: 18px;
-      font-weight: 600;
-      color: #24312b;
-    }
-    .value {
-      font-size: 15px;
-      font-weight: 600;
-      color: #101a14;
-      min-width: 48px;
-      text-align: center;
-    }
-    @media (prefers-color-scheme: dark) {
-      .label {
-        color: #93a49a;
-      }
-      .step {
-        background-color: #1e2a24;
-      }
-      .step-text {
-        color: #d6e2da;
-      }
-      .value {
-        color: #eaf2ec;
-      }
-    }
+    .step-text { font-size: 19px; font-weight: 600; color: #e3d3ae; }
+    .value { font-size: 15px; font-weight: 600; color: #f3ecdf; min-width: 48px; text-align: center; }
   `,
 })
 export class HourField {

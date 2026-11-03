@@ -6,16 +6,18 @@ views, inside an Expo app, with React never in the render path.
 
 ## What it does
 
-Four tabs carry the bot's core trackers:
+A short onboarding leads into five tabs:
 
-- **Рамадан / Ramadan** - the day-by-day tracker: fasting, Quran reading and taraweeh (mosque, home
-  or missed) for any day of the month, with the bot's statistics and a daily reflection.
+- **Сегодня / Today** - the daily reflection first, a shareable PNG reminder card, and quick fasting,
+  Quran and taraweeh check-ins.
 - **Азкары / Azkar** - the morning and evening azkar, read one at a time with the per-azkar counter,
   a completion mark and weekly stats.
-- **Коран / Quran** - the daily Quran tracker (read / not read / a page count) and the Al-Mulk
-  tracker, which can be switched on and marked read each night.
-- **Настройки / Settings** - language (Russian or English), the Ramadan start date, and local
-  reminders for the morning and evening azkar, the Quran and Al-Mulk.
+- **Коран / Quran** - read / not read / unmarked, an optional page or juz count, and the switchable
+  Al-Mulk tracker.
+- **Прогресс / Progress** - a 29/30-day history calendar, editable daily records, and separate monthly
+  totals for fasting, taraweeh and Quran, including unmarked days.
+- **Настройки / Settings** - language, local Ramadan start date and length, individually configured
+  local reminders, and feedback by email.
 
 ## Commands
 
@@ -27,10 +29,11 @@ npm test            # Vitest, in Node against a fake native layer: no simulator 
 npm run typecheck
 ```
 
-## Reminders need a real build
+## Reminders and PNG sharing need a real build
 
-The app schedules **local notifications** (`expo-notifications`), so run it from a development or
-preview build rather than Expo Go. The quickest route builds in Expo's cloud — no Android SDK or
+The app schedules **local notifications** (`expo-notifications`) and captures reminder cards with
+`react-native-view-shot`, sharing the PNG through `expo-sharing`. Run it from a development or
+preview build rather than Expo Go; in Expo Go, sharing falls back to text. The quickest route builds in Expo's cloud — no Android SDK or
 Xcode needed:
 
 ```sh
@@ -64,17 +67,22 @@ without touching the trackers.
 src/
   main.ts                     mounts the root component
   app/
-    app.ts                    the tab shell
+    app.ts                    onboarding and the five-tab shell
+    shared/theme.css          the shared dark green/gold theme
     core/
-      state.ts                the domain model, the store and the weekly stats
+      state.ts                the domain model, synced trackers and statistics
       i18n.ts                 runtime Russian/English dictionaries
       dates.ts                local dates, the day of Ramadan, pluralisation
-      reminders.ts            the local notification schedule
+      reminders.ts            the serialised local notification schedule
+      share-card.ts           reminder view capture and PNG sharing
     features/
-      ramadan/                the day tracker and the daily messages
+      onboarding/             introduction and initial preferences
+      today/                  daily reflection and quick check-ins
+      ramadan/                history calendar, day editor and daily messages
       azkar/                  the azkar reader and its content
       quran/                  the Quran and Al-Mulk trackers
-      settings/               language, start date and reminder times
+      feedback/               categorized email feedback
+      settings/               language, month and reminder settings
 ```
 
 `AGENTS.md` explains how Angular Native differs from the web Angular a coding agent knows.

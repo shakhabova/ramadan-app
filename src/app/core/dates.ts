@@ -46,9 +46,6 @@ export function isValidIsoDate(value: string): boolean {
   );
 }
 
-/** The number of days in Ramadan. Most years it is 30; a 29-day year still fits inside. */
-export const RAMADAN_DAYS = 30;
-
 /** Russian pluralisation: `getPlural(3, ['день', 'дня', 'дней'])` gives `'дня'`. */
 export function getPlural(count: number, forms: [string, string, string]): string {
   const mod10 = Math.abs(count) % 10;
